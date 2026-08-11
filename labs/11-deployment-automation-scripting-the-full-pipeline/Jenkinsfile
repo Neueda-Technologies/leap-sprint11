@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION      = 'eu-west-2'
+        AWS_ACCOUNT_ID  = '369274594770'
+        ECR_REPO        = 'leap-auth-service'
+        ECS_CLUSTER     = 'lab07-cluster'
+        ECS_SERVICE     = 'lab08-auth-service'
+        TASK_FAMILY     = 'lab07-auth-service'
+        EXECUTION_ROLE  = "arn:aws:iam::${AWS_ACCOUNT_ID}:role/lab07-ecs-execution-role"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    env.COMMIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.IMAGE_URI   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.COMMIT_SHA}"
+                }
+                sh """
+                    docker build --platform linux/amd64 -t ${env.IMAGE_URI} .
+                """
+            }
+        }
+
+        stage('Push') {
+            steps {
+                sh """
+                    aws ecr get-login-password --region ${AWS_REGION} \
+                      | docker login --username AWS --password-stdin \
+                          ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    docker push ${env.IMAGE_URI}
+                """
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    // Fetch the current live task definition and swap only the image —
+                    // preserves secrets, environment, log config, and any other settings.
+                    def currentTaskDef = sh(
+                        script: """
+                            aws ecs describe-task-definition \
+                              --region ${AWS_REGION} \
+                              --task-definition ${TASK_FAMILY} \
+                              --query 'taskDefinition' --output json
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    def newTaskDef = sh(
+                        script: """
+                            echo '${currentTaskDef}' | python3 -c "
+import sys, json
+td = json.load(sys.stdin)
+# Swap image in first container
+td['containerDefinitions'][0]['image'] = '${env.IMAGE_URI}'
+# Strip read-only fields that RegisterTaskDefinition rejects
+for key in ['taskDefinitionArn','revision','status','requiresAttributes',
+            'placementConstraints','compatibilities','registeredAt','registeredBy']:
+    td.pop(key, None)
+print(json.dumps(td))
+"
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    def newRevision = sh(
+                        script: """
+                            echo '${newTaskDef}' | aws ecs register-task-definition \
+                              --region ${AWS_REGION} \
+                              --cli-input-json file:///dev/stdin \
+                              --query 'taskDefinition.taskDefinitionArn' --output text
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    sh """
+                        aws ecs update-service \
+                          --region ${AWS_REGION} \
+                          --cluster ${ECS_CLUSTER} \
+                          --service ${ECS_SERVICE} \
+                          --task-definition ${newRevision} \
+                          --force-new-deployment \
+                          --query 'service.{Status:status,Deployments:length(deployments)}' \
+                          --output table
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success { echo "Deploy of ${env.IMAGE_URI} succeeded." }
+        failure { echo "Pipeline failed — check stage logs above." }
+    }
+}
