@@ -2,8 +2,62 @@
 
 ## Setup
 
-Access the AWS console and CLI as per your instructor's instructions for this cohort. Confirm
+Access the AWS console as per your instructor's instructions for this cohort. Confirm
 `aws --version` reports AWS CLI v2 before starting.
+
+You already have an IAM user, but that user has no access keys yet. The CLI needs an access key
+ID and secret access key to authenticate, so you will create a key pair in the console and then
+hand it to the CLI with `aws configure`.
+
+### Step 1: Create an access key for your IAM user
+
+1. Sign in to the AWS console and open the **IAM** service (use the search bar at the top).
+2. In the left-hand menu choose **Users**, then click your own user name.
+3. Open the **Security credentials** tab and scroll down to the **Access keys** section.
+4. Click **Create access key**.
+5. For the use case, choose **Command Line Interface (CLI)**. Tick the confirmation box that
+   says you understand the recommendation, then click **Next**.
+6. Optionally add a description tag such as `leap-sprint11-cli`, then click **Create access key**.
+7. The next screen shows your **Access key** and **Secret access key**. This is the *only* time
+   the secret is shown. Click **Download .csv file** and keep it somewhere safe, or copy both
+   values into a password manager. Do not commit them to git or paste them into shared chat.
+8. Click **Done**.
+
+### Step 2: Run `aws configure`
+
+In a terminal, run:
+
+```bash
+aws configure
+```
+
+It will prompt for four values. Answer them as follows:
+
+```text
+AWS Access Key ID [None]:     <paste the Access key from Step 1>
+AWS Secret Access Key [None]: <paste the Secret access key from Step 1>
+Default region name [None]:   us-east-1
+Default output format [None]: json
+```
+
+This writes the keys to `~/.aws/credentials` and the region and output format to `~/.aws/config`
+under the `default` profile. You do not need to repeat this unless you change machines or rotate
+the key.
+
+### Step 3: Confirm it worked
+
+Run:
+
+```bash
+aws sts get-caller-identity
+```
+
+You should see your account ID and an ARN ending in your IAM user name. If you get
+`InvalidClientTokenId` or `SignatureDoesNotMatch`, the key or secret was pasted incorrectly;
+run `aws configure` again and re-enter them. If you get `Unable to locate credentials`, the
+values were not saved at all; check that `~/.aws/credentials` exists.
+
+Finally, run `aws configure get region` and confirm it prints `us-east-1`.
 
 ## Task
 
