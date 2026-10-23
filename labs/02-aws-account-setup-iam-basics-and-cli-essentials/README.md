@@ -107,7 +107,7 @@ Finally, run `aws configure get region` and confirm it prints `us-east-1`.
 
 ### Part 5: Run your first real commands
 
-15. List the S3 buckets in the account: `aws s3 ls`. (There are several already — this is a
+15. List the S3 buckets in the account: `aws s3 ls`. (There may be several already but it could be blank — this is a
     shared training account; leave anyone else's buckets alone.)
 16. List the VPCs in the account: `aws ec2 describe-vpcs --query
     'Vpcs[].{Id:VpcId,Cidr:CidrBlock}' --output table`. You'll use this VPC directly in Module 3.
